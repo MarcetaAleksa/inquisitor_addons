@@ -1,0 +1,6 @@
+## Interface: 90005
+## Title: Inquisition Roller
+## Notes: A simple dice roller with modifiers.
+## Author: YourName
+## Version: 0.01
+Inquisition_Roller.lua
