@@ -1,6 +1,6 @@
 ## Interface: 90005
-## Title: Inquisition Roller
-## Notes: A simple dice roller with modifiers.
-## Author: YourName
-## Version: 0.01
+## Title: Inquisition Character Sheet with dice roller.
+## Notes: This addon will contain inside itself a detailed character sheet with possibly the rules section added as well (both the courtesy of Hashaw). The character sheet will be used for all Inquisition events and the most important part will be the dice rolle system based on Hashaws rules.
+## Author: Jarrod and Aleksa
+## Version: 0.02
 Inquisition_Roller.lua
