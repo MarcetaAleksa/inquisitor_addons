@@ -1,5 +1,14 @@
 -- Create the main frame for the addon interface
 local frame = CreateFrame("Frame", "DiceRollerFrame", UIParent, "BasicFrameTemplateWithInset")
+
+-- untested code --
+frame:SetMovaable(true)
+frame:EnableMouse(true)
+frame:RegisterForDrag("LeftButton")
+frame:SetScript("OnDragStart", frame.StartMoving)
+frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+-- the code below works properly only the above section should be removed if the addon crashes.
+
 frame:SetSize(300, 200)  -- width, height
 frame:SetPoint("CENTER") -- position
 frame.title = frame:CreateFontString(nil, "OVERLAY")
