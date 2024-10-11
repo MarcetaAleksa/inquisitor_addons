@@ -1,0 +1,549 @@
+-- WoW Addon Script for Editable Character Sheet Fields with UI Integration
+
+-- Table to store character information
+local characterSheet = {
+    characterName = "",
+    archetype = "None",  -- Character archetype
+    experiencePoints = 0,
+    level = 1,
+    armorType = "None",
+    shield = "No",
+    strength = 10,
+    dexterity = 10,
+    endurance = 10,
+    instinct = 10,
+    will = 10,
+    magicalPotential = "None",  -- Dropdown value: None, Low, Medium, High
+    availablePoints = 0,  -- Points will be allocated based on level
+    specialAbilities = {},
+    offensiveAbilities = {
+        meleeCombat = 0,
+        rangedCombat = 0,
+        battleMagic = 0,
+    },
+    defensiveAbilities = {
+        shieldUsage = 0,
+        abjurationMagic = 0,
+        battlefieldDefense = 0,
+    },
+    healingAbilities = {
+        restorationMagic = 0,
+    },
+    nonCombatAbilities = {
+        stealth = 0,
+        perception = 0,
+        animalHandling = 0,
+        medicine = 0,
+        survivalInNature = 0,
+        knowledgeMagic = 0,
+        knowledgeReligion = 0,
+        knowledgeNature = 0,
+        knowledgeTechnology = 0,
+    },
+    turnCounter = 0,  -- Turn counter to track turns
+    activeSpells = {},  -- Table to track active spells and their progress
+    weaponType = "Unarmed",  -- Default weapon type
+    rangedWeaponType = "CrossBow",  -- Default ranged weapon type
+    ammunitionType = "Bullet - Penetrating",  -- Default ammunition type
+    sniperTurnCounter = 0,  -- Turn counter for sniper shots
+    isThreatened = false,  -- Indicates if the character is under threat
+    canRetaliate = true,  -- Indicates if the character can retaliate this turn
+    healingPool = 0,  -- Healing pool available for use
+    pvpTurnCounter = 0,  -- Turn counter for PvP rounds
+    pvpPointsPool = 0,  -- PvP points pool for allocation
+    pvpAttackPoints = 0,  -- Points allocated to enhance PvP attack rolls
+    pvpDefensePoints = 0,  -- Points allocated to enhance PvP defense rolls
+    proficiency = 1,  -- Proficiency based on level
+    pvpScore = 0,  -- Score for PvP match
+    attributePointsPool = 0,  -- Pool for attribute points allocation
+    skillPointsPool = 0,  -- Pool for combat and healing skill allocation
+    specSkillPointsPool = 0,  -- Pool for non-combat specialization skill allocation
+    isInEncounter = false,  -- Indicates if the party is currently in an encounter
+    isInEvent = false,  -- Indicates if the party is currently in an event
+}
+
+-- Create Main UI Frame for Character Sheet
+local charSheetFrame = CreateFrame("Frame", "CharacterSheetFrame", UIParent, "BasicFrameTemplateWithInset")
+charSheetFrame:SetSize(500, 600)
+charSheetFrame:SetPoint("CENTER")
+
+-- Tabs for Different Sections of the Character Sheet
+local tabs = {
+    { name = "Main", content = nil },
+    { name = "Attributes", content = nil },
+    { name = "Abilities", content = nil },
+    { name = "Non-Combat Skills", content = nil },
+    { name = "Healing", content = nil }
+},
+    { name = "Attributes", content = nil },
+    { name = "Abilities", content = nil },
+    { name = "Non-Combat Skills", content = nil }
+}
+
+-- Create Tabs
+local function CreateTabs(frame)
+    local numTabs = #tabs
+    for i, tab in ipairs(tabs) do
+        local tabButton = CreateFrame("Button", "TabButton" .. i, frame, "CharacterFrameTabButtonTemplate")
+        tabButton:SetID(i)
+        tabButton:SetText(tab.name)
+        tabButton:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", (i - 1) * 110, 0)
+        tabButton:SetScript("OnClick", function(self)
+            PanelTemplates_SetTab(frame, self:GetID())
+            for j, tab in ipairs(tabs) do
+                if j == self:GetID() then
+                    tab.content:Show()
+                else
+                    tab.content:Hide()
+                end
+            end
+        end)
+        PanelTemplates_TabResize(tabButton, 0)
+        tabs[i].button = tabButton
+    end
+end
+
+-- Create Main Content for Character Info and Combat
+local function CreateMainContent(frame)
+    local mainContent = CreateFrame("Frame", nil, frame)
+    mainContent:SetSize(480, 500)
+    mainContent:SetPoint("TOP", frame, "TOP", 0, -40)
+
+    -- Experience Bar
+    local xpBarFrame = CreateFrame("StatusBar", "XPBarFrame", mainContent, "TextStatusBar")
+    xpBarFrame:SetSize(400, 20)
+    xpBarFrame:SetPoint("TOP", mainContent, "TOP", 0, -10)
+    xpBarFrame:SetStatusBarTexture("Interface\TARGETINGFRAME\UI-StatusBar")
+    xpBarFrame:GetStatusBarTexture():SetHorizTile(false)
+    xpBarFrame:SetStatusBarColor(0, 0.65, 0)
+
+    local xpBarBg = xpBarFrame:CreateTexture(nil, "BACKGROUND")
+    xpBarBg:SetAllPoints(true)
+    xpBarBg:SetColorTexture(0.3, 0.3, 0.3, 0.5)
+
+    local xpBarLabel = xpBarFrame:CreateFontString(nil, "OVERLAY")
+    xpBarLabel:SetFontObject("GameFontHighlight")
+    xpBarLabel:SetPoint("CENTER", xpBarFrame, "CENTER")
+    xpBarLabel:SetText("XP: 0/1000")
+
+    -- Function to Update the XP Bar
+    local function UpdateXPBar()
+        local currentXP = characterSheet.experiencePoints
+        local level = characterSheet.level
+        local nextLevelXP = (level * 300) + (level ^ 2 * 100)
+
+        xpBarFrame:SetMinMaxValues(0, nextLevelXP)
+        xpBarFrame:SetValue(currentXP)
+        xpBarLabel:SetText("XP: " .. currentXP .. " / " .. nextLevelXP)
+    end
+    UpdateXPBar()
+
+    -- Turn Status Display
+    local turnStatusLabel = mainContent:CreateFontString(nil, "OVERLAY")
+    turnStatusLabel:SetFontObject("GameFontHighlightLarge")
+    turnStatusLabel:SetPoint("TOP", xpBarFrame, "BOTTOM", 0, -20)
+    turnStatusLabel:SetText("Turn Status: None")
+
+    -- Function to Update Turn Status
+    local function UpdateTurnStatus(isPartyTurn)
+        if isPartyTurn then
+            turnStatusLabel:SetText("Turn Status: Party Attack Turn")
+            turnStatusLabel:SetTextColor(0, 1, 0)  -- Green color for party turn
+        else
+            turnStatusLabel:SetText("Turn Status: Enemy Attack Turn")
+            turnStatusLabel:SetTextColor(1, 0, 0)  -- Red color for enemy turn
+        end
+    end
+
+    -- Health Points Display
+    local hpLabel = mainContent:CreateFontString(nil, "OVERLAY")
+    hpLabel:SetFontObject("GameFontHighlightLarge")
+    hpLabel:SetPoint("TOP", turnStatusLabel, "BOTTOM", 0, -20)
+    hpLabel:SetText("Health Points: " .. characterSheet.healingPool)
+
+    -- Function to Update Health Points
+    local function UpdateHPLabel()
+        hpLabel:SetText("Health Points: " .. characterSheet.healingPool)
+    end
+
+    -- Button to Make Melee Attack Roll
+    local meleeAttackButton = CreateFrame("Button", nil, mainContent, "GameMenuButtonTemplate")
+    meleeAttackButton:SetPoint("TOP", hpLabel, "BOTTOM", 0, -20)
+    meleeAttackButton:SetSize(120, 40)
+    meleeAttackButton:SetText("Melee Attack")
+    meleeAttackButton:SetScript("OnClick", function()
+        local roll = math.random(1, 100) + characterSheet.offensiveAbilities.meleeCombat
+        print("Melee Attack Roll: " .. roll)
+    end)
+
+    -- Button to Make Magic Attack Roll
+    local magicAttackButton = CreateFrame("Button", nil, mainContent, "GameMenuButtonTemplate")
+    magicAttackButton:SetPoint("LEFT", meleeAttackButton, "RIGHT", 10, 0)
+    magicAttackButton:SetSize(120, 40)
+    magicAttackButton:SetText("Magic Attack")
+    magicAttackButton:SetScript("OnClick", function()
+        local roll = math.random(1, 100) + characterSheet.offensiveAbilities.battleMagic
+        print("Magic Attack Roll: " .. roll)
+    end)
+
+    -- Button to Make Defense Roll
+    local defenseRollButton = CreateFrame("Button", nil, mainContent, "GameMenuButtonTemplate")
+    defenseRollButton:SetPoint("TOP", meleeAttackButton, "BOTTOM", 0, -20)
+    defenseRollButton:SetSize(120, 40)
+    defenseRollButton:SetText("Defense Roll")
+    defenseRollButton:SetScript("OnClick", function()
+        local roll = math.random(1, 100) + characterSheet.defensiveAbilities.battlefieldDefense
+        print("Defense Roll: " .. roll)
+    end)
+
+    -- Function to Toggle Turn
+    local function ToggleTurn()
+        if characterSheet.isPartyTurn then
+            characterSheet.isPartyTurn = false
+            UpdateTurnStatus(false)
+            PlaySound(8959)  -- Play sound for enemy turn
+            print("Enemy Attack Turn begins.")
+            ShowDMNotification("Enemy Attack Turn begins.")
+        else
+            characterSheet.isPartyTurn = true
+            UpdateTurnStatus(true)
+            PlaySound(8957)  -- Play sound for party turn
+            print("Party Attack Turn begins.")
+            ShowDMNotification("Party Attack Turn begins.")
+        end
+    end
+        else
+            characterSheet.isPartyTurn = true
+            UpdateTurnStatus(true)
+            PlaySound(8957)  -- Play sound for party turn
+            print("Party Attack Turn begins.")
+        end
+    end
+        else
+            characterSheet.isPartyTurn = true
+            UpdateTurnStatus(true)
+            print("Party Attack Turn begins.")
+        end
+    end
+
+    -- Button to End Turn
+    local endTurnButton = CreateFrame("Button", nil, mainContent, "GameMenuButtonTemplate")
+    endTurnButton:SetPoint("LEFT", defenseRollButton, "RIGHT", 10, 0)
+    endTurnButton:SetSize(120, 40)
+    endTurnButton:SetText("End Turn")
+    endTurnButton:SetScript("OnClick", function()
+        if characterSheet.isInEncounter then
+            ToggleTurn()
+        else
+            print("You are not in an encounter.")
+        end
+    end)
+
+    -- Assign to main tab
+    tabs[1].content = mainContent
+        local currentXP = characterSheet.experiencePoints
+        local level = characterSheet.level
+        local nextLevelXP = (level * 300) + (level ^ 2 * 100)
+
+        xpBarFrame:SetMinMaxValues(0, nextLevelXP)
+        xpBarFrame:SetValue(currentXP)
+        xpBarLabel:SetText("XP: " .. currentXP .. " / " .. nextLevelXP)
+    end
+    UpdateXPBar()
+
+    -- Health Points Display
+    local hpLabel = mainContent:CreateFontString(nil, "OVERLAY")
+    hpLabel:SetFontObject("GameFontHighlightLarge")
+    hpLabel:SetPoint("TOP", xpBarFrame, "BOTTOM", 0, -20)
+    hpLabel:SetText("Health Points: " .. characterSheet.healingPool)
+
+    -- Function to Update Health Points
+    local function UpdateHPLabel()
+        hpLabel:SetText("Health Points: " .. characterSheet.healingPool)
+    end
+
+    -- Button to Make Melee Attack Roll
+    local meleeAttackButton = CreateFrame("Button", nil, mainContent, "GameMenuButtonTemplate")
+    meleeAttackButton:SetPoint("TOP", hpLabel, "BOTTOM", 0, -20)
+    meleeAttackButton:SetSize(120, 40)
+    meleeAttackButton:SetText("Melee Attack")
+    meleeAttackButton:SetScript("OnClick", function()
+        local roll = math.random(1, 100) + characterSheet.offensiveAbilities.meleeCombat
+        print("Melee Attack Roll: " .. roll)
+    end)
+
+    -- Button to Make Magic Attack Roll
+    local magicAttackButton = CreateFrame("Button", nil, mainContent, "GameMenuButtonTemplate")
+    magicAttackButton:SetPoint("LEFT", meleeAttackButton, "RIGHT", 10, 0)
+    magicAttackButton:SetSize(120, 40)
+    magicAttackButton:SetText("Magic Attack")
+    magicAttackButton:SetScript("OnClick", function()
+        local roll = math.random(1, 100) + characterSheet.offensiveAbilities.battleMagic
+        print("Magic Attack Roll: " .. roll)
+    end)
+
+    
+        end
+    end)
+        end
+    end)
+
+    -- Button to End Turn After Healing
+    local endTurnButton = CreateFrame("Button", nil, mainContent, "GameMenuButtonTemplate")
+    endTurnButton:SetPoint("TOP", healButton, "BOTTOM", 0, -20)
+    endTurnButton:SetSize(120, 40)
+    endTurnButton:SetText("End Turn")
+    endTurnButton:SetScript("OnClick", function()
+        if characterSheet.isInEncounter then
+            print(UnitName("player") .. " has ended their turn.")
+            NextTurn()  -- Proceed to the next player's turn
+        else
+            print("You are not in an encounter.")
+        end
+    end)
+    end)
+
+    -- Button to Make Defense Roll
+    local defenseRollButton = CreateFrame("Button", nil, mainContent, "GameMenuButtonTemplate")
+    defenseRollButton:SetPoint("LEFT", healButton, "RIGHT", 10, 0)
+    defenseRollButton:SetSize(120, 40)
+    defenseRollButton:SetText("Defense Roll")
+    defenseRollButton:SetScript("OnClick", function()
+        local roll = math.random(1, 100) + characterSheet.defensiveAbilities.battlefieldDefense
+        print("Defense Roll: " .. roll)
+    end)
+
+    -- Event Status Display
+    local eventStatusLabel = mainContent:CreateFontString(nil, "OVERLAY")
+    eventStatusLabel:SetFontObject("GameFontHighlightLarge")
+    eventStatusLabel:SetPoint("TOP", healButton, "BOTTOM", 0, -40)
+    eventStatusLabel:SetText("Event Status: None")
+
+    -- Function to Update Event Status
+    local function UpdateEventStatus(isEncounter, isEventActive, isGeneral)
+        characterSheet.isInEncounter = isEncounter
+        characterSheet.isInEvent = isEventActive
+
+        if isEncounter then
+            characterSheet.turnCounter = 0  -- Reset turn counter at the start of an encounter
+            eventStatusLabel:SetText("Event Status: Encounter (Turns Synchronized)")
+            -- Notify players of turn synchronization
+            SendAddonMessage("DMAddon", "ENCOUNTER_STARTED", "RAID")
+        elseif isEventActive then
+            eventStatusLabel:SetText("Event Status: Active Event")
+        elseif isGeneral then
+            eventStatusLabel:SetText("Event Status: General")
+        else
+            eventStatusLabel:SetText("Event Status: None")
+        end
+    end
+        end
+    end
+        end
+    end
+
+    -- Example to set event status (only DM can change status, default is General)
+    UpdateEventStatus(false, false, true)
+
+-- Function to synchronize turns during encounters
+local function NextTurn()
+    if characterSheet.isInEncounter then
+        characterSheet.turnCounter = characterSheet.turnCounter + 1
+        if characterSheet.turnCounter % 2 == 1 then
+            characterSheet.isPartyTurn = true
+            UpdateTurnStatus(true)
+            PlaySound(8957)  -- Play sound for party turn
+            print("Party Attack Turn begins.")
+            ShowDMNotification("Party Attack Turn begins.")
+        else
+            characterSheet.isPartyTurn = false
+            UpdateTurnStatus(false)
+            PlaySound(8959)  -- Play sound for enemy turn
+            print("Enemy Attack Turn begins.")
+            ShowDMNotification("Enemy Attack Turn begins.")
+        end
+    end
+end
+        end
+    end
+end
+        end
+    end
+end
+    end
+end
+
+    -- Assign to main tab
+    tabs[1].content = mainContent
+    tabs[1].content = mainContent
+    tabs[1].content = mainContent
+end
+
+-- Create Healing Content for Healing UI
+local function CreateHealingContent(frame)
+    local healingContent = CreateFrame("Frame", nil, frame)
+    healingContent:SetSize(480, 500)
+    healingContent:SetPoint("TOP", frame, "TOP", 0, -40)
+
+    -- Party Member Health Points Display
+    local partyMembers = {"Player1", "Player2", "Player3"}  -- Example party member names, replace with actual data
+    local partyHPLabels = {}
+
+    for i, member in ipairs(partyMembers) do
+        local hpLabel = healingContent:CreateFontString(nil, "OVERLAY")
+        hpLabel:SetFontObject("GameFontHighlightLarge")
+        hpLabel:SetPoint("TOPLEFT", healingContent, "TOPLEFT", 20, -30 * i)
+        hpLabel:SetText(member .. " HP: 100")  -- Replace with actual HP data
+        partyHPLabels[member] = hpLabel
+    end
+
+    -- Dropdown to Select Healing Target
+    local targetDropdown = CreateFrame("Frame", "TargetDropdown", healingContent, "UIDropDownMenuTemplate")
+    targetDropdown:SetPoint("TOP", healingContent, "TOP", 0, -150)
+
+    UIDropDownMenu_Initialize(targetDropdown, function(self, level, menuList)
+        local info = UIDropDownMenu_CreateInfo()
+        for _, target in ipairs(partyMembers) do
+            info.text = target
+            info.arg1 = target
+            info.func = function(self, arg1)
+                local healAmount = math.random(1, 50) + characterSheet.healingAbilities.restorationMagic
+                print("Healing Amount: " .. healAmount .. " to " .. arg1)
+
+                -- Update HP Label for the selected target
+                local currentHP = tonumber(string.match(partyHPLabels[arg1]:GetText(), "%d+"))
+                currentHP = currentHP + healAmount
+                partyHPLabels[arg1]:SetText(arg1 .. " HP: " .. currentHP)
+
+                -- Queue the healing action for the selected target
+                table.insert(healingQueue, {
+                    healer = UnitName("player"),
+                    target = arg1,
+                    amount = healAmount
+                })
+                print(UnitName("player") .. " queued a healing action for " .. arg1 .. " for " .. healAmount .. " HP.")
+            end
+            UIDropDownMenu_AddButton(info)
+        end
+    end)
+
+    tabs[5].content = healingContent
+end
+
+-- Create the Other Content Panels
+local function CreateAttributesContent(frame)
+    local attributesContent = CreateFrame("Frame", nil, frame)
+    attributesContent:SetSize(480, 500)
+    attributesContent:SetPoint("TOP", frame, "TOP", 0, -40)
+
+    local strengthSlider = CreateFrame("Slider", nil, attributesContent, "OptionsSliderTemplate")
+    strengthSlider:SetPoint("TOPLEFT", attributesContent, "TOPLEFT", 20, -20)
+    strengthSlider:SetMinMaxValues(1, 20)
+    strengthSlider:SetValue(characterSheet.strength)
+    strengthSlider:SetValueStep(1)
+    strengthSlider:SetSize(200, 20)
+    strengthSlider.text = strengthSlider:CreateFontString(nil, "OVERLAY")
+    strengthSlider.text:SetFontObject("GameFontHighlight")
+    strengthSlider.text:SetPoint("LEFT", strengthSlider, "RIGHT", 10, 0)
+    strengthSlider.text:SetText("Strength: " .. characterSheet.strength)
+
+    strengthSlider:SetScript("OnValueChanged", function(self, value)
+        characterSheet.strength = value
+        strengthSlider.text:SetText("Strength: " .. value)
+        UpdateAttribute("strength", value)
+    end)
+
+    tabs[2].content = attributesContent
+end
+
+local function CreateAbilitiesContent(frame)
+    local abilitiesContent = CreateFrame("Frame", nil, frame)
+    abilitiesContent:SetSize(480, 500)
+    abilitiesContent:SetPoint("TOP", frame, "TOP", 0, -40)
+
+    -- Weapon Specialization Dropdown
+    local weaponSpecializationLabel = abilitiesContent:CreateFontString(nil, "OVERLAY")
+    weaponSpecializationLabel:SetFontObject("GameFontHighlight")
+    weaponSpecializationLabel:SetPoint("TOPLEFT", abilitiesContent, "TOPLEFT", 20, -20)
+    weaponSpecializationLabel:SetText("Weapon Specialization:")
+
+    local weaponSpecializationDropdown = CreateFrame("Frame", "WeaponSpecializationDropdown", abilitiesContent, "UIDropDownMenuTemplate")
+    weaponSpecializationDropdown:SetPoint("LEFT", weaponSpecializationLabel, "RIGHT", 10, 0)
+
+    local weaponSpecializations = {
+        "Unarmed", "Single One-Handed", "Double One-Handed", "Single One-Handed + Shield", "Two-Handed", "Ranged"
+    }
+
+    UIDropDownMenu_Initialize(weaponSpecializationDropdown, function(self, level, menuList)
+        local info = UIDropDownMenu_CreateInfo()
+        for _, spec in ipairs(weaponSpecializations) do
+            info.text = spec
+            info.arg1 = spec
+            info.func = function(self, arg1)
+                characterSheet.weaponSpecialization = arg1
+                print("Weapon Specialization Selected: " .. arg1)
+            end
+            UIDropDownMenu_AddButton(info)
+        end
+    end)
+
+    tabs[3].content = abilitiesContent
+end
+
+local function CreateNonCombatSkillsContent(frame)
+    local nonCombatSkillsContent = CreateFrame("Frame", nil, frame)
+    nonCombatSkillsContent:SetSize(480, 500)
+    nonCombatSkillsContent:SetPoint("TOP", frame, "TOP", 0, -40)
+    
+    -- Add non-combat skill controls here
+    
+    tabs[4].content = nonCombatSkillsContent
+end
+
+-- Initialize the UI
+CreateTabs(charSheetFrame)
+CreateMainContent(charSheetFrame)
+CreateAttributesContent(charSheetFrame)
+CreateAbilitiesContent(charSheetFrame)
+CreateNonCombatSkillsContent(charSheetFrame)
+CreateHealingContent(charSheetFrame)
+
+-- Default to show the main content initially
+tabs[1].content:Show()
+for i = 2, #tabs do
+    tabs[i].content:Hide()
+end
+
+-- Function to show DM Notification
+local function ShowDMNotification(message)
+    local notificationFrame = CreateFrame("Frame", "DMNotificationFrame", UIParent, "BasicFrameTemplateWithInset")
+    notificationFrame:SetSize(300, 100)
+    notificationFrame:SetPoint("CENTER", 0, 200)
+
+    local notificationText = notificationFrame:CreateFontString(nil, "OVERLAY")
+    notificationText:SetFontObject("GameFontHighlightLarge")
+    notificationText:SetPoint("CENTER", notificationFrame, "CENTER")
+    notificationText:SetText(message)
+
+    -- Auto-hide the notification after 3 seconds
+    C_Timer.After(3, function()
+        notificationFrame:Hide()
+    end)
+end
+
+-- Slash command to open the character sheet
+SLASH_CHARSHEET1 = "/charsheet"
+
+-- Periodic Timer for Healing Pool Regeneration and Skill Use (outside encounters)
+C_Timer.NewTicker(60, function()
+    if not characterSheet.isInEncounter then
+        -- Regenerate healing pool based on healing pool recovery value
+        local regenAmount = characterSheet.healingAbilities.restorationMagic
+        characterSheet.healingPool = characterSheet.healingPool + regenAmount
+        UpdateHPLabel()
+        print("Healing pool regenerated by " .. regenAmount .. " points.")
+    end
+end)
+SlashCmdList["CHARSHEET"] = function()
+    charSheetFrame:Show()
+end
