@@ -1,411 +1,385 @@
--- WoW Addon Script for the DM Control Panel
+-- WoW Addon Script for Handling Rolls and Combat Logic
 
--- Table to handle DM panel logic
-local DMPanelHandler = {}
+-- Table to handle combat logic and rolls
 
--- Function to check if the player is authorized to use the DM Panel
-local function IsAuthorized()
-    if IsInGuild() then
-        local playerName = UnitName("player")
-        for i = 1, GetNumGuildMembers() do
-            local name, _, rankIndex = GetGuildRosterInfo(i)
-            if name == playerName and rankIndex <= 1 then  -- Assuming rankIndex 0 is Guild Master, 1 is Officer
-                return true
-            end
+-- Function to select a target from available raid markers
+function CombatHandler:SelectTarget(targetMarker)
+    local availableMarkers = {
+        ["Star"] = "Star",
+        ["Circle"] = "Circle",
+        ["Diamond"] = "Diamond",
+        ["Triangle"] = "Triangle",
+        ["Moon"] = "Moon",
+        ["Square"] = "Square",
+        ["Cross"] = "Cross",
+        ["Skull"] = "Skull"
+    }
+
+    if availableMarkers[targetMarker] then
+        characterSheet.selectedTarget = availableMarkers[targetMarker]
+        print("Target selected: " .. availableMarkers[targetMarker])
+
+        -- Display raid marker for the selected target
+        local raidMarker = availableMarkers[targetMarker]
+        if raidMarker then
+            print("Displaying raid marker: " .. raidMarker)
+            -- Assuming there's a function to display raid markers in the WoW API
+            -- Replace the following with the actual WoW API call if available
+            SetRaidTarget("target", raidMarker)
         end
-    end
-    return false
-end
-
--- Function to initialize the DM panel UI
-function DMPanelHandler:InitializeDMPanel()
-    if not IsAuthorized() then
-        print("You are not authorized to use the DM Control Panel.")
-        return
-    end
-
-    -- Create the main frame for the DM panel with tab buttons
-    local frame = CreateFrame("Frame", "DMPanelFrame", UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(500, 600)
-    frame:SetPoint("CENTER", UIParent, "CENTER")
-    frame.title = frame:CreateFontString(nil, "OVERLAY")
-    frame.title:SetFontObject("GameFontHighlight")
-    frame.title:SetPoint("LEFT", frame.TitleBg, "LEFT", 5, 0)
-    frame.title:SetText("DM Control Panel")
-
-    -- Create tabs for Encounter and Event
-    local tab1 = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
-    tab1:SetSize(120, 40)
-    tab1:SetText("Encounter")
-    tab1:SetPoint("TOPLEFT", frame, "TOPLEFT", 10, -30)
-
-    local tab2 = CreateFrame("Button", nil, frame, "GameMenuButtonTemplate")
-    tab2:SetSize(120, 40)
-    tab2:SetText("Event")
-    tab2:SetPoint("LEFT", tab1, "RIGHT", 10, 0)
-
-    -- Create Encounter Tab Frame
-    local encounterFrame = CreateFrame("Frame", "DMEncounterFrame", frame)
-    encounterFrame:SetSize(460, 500)
-    encounterFrame:SetPoint("BOTTOM", frame, "BOTTOM", 0, 10)
-
-    -- Create Event Tab Frame
-    local eventFrame = CreateFrame("Frame", "DMEventFrame", frame)
-    eventFrame:SetSize(460, 500)
-    eventFrame:SetPoint("BOTTOM", frame, "BOTTOM", 0, 10)
-    eventFrame:Hide()
-
-    -- Tab switching logic
-    tab1:SetScript("OnClick", function()
-        encounterFrame:Show()
-        eventFrame:Hide()
-    end)
-
-    tab2:SetScript("OnClick", function()
-        encounterFrame:Hide()
-        eventFrame:Show()
-    end)
-
-    -- Create buttons in Encounter Tab
-
-    -- Create a scrollable list for managing multiple targets
-    local targetScrollFrame = CreateFrame("ScrollFrame", nil, encounterFrame, "UIPanelScrollFrameTemplate")
-    targetScrollFrame:SetPoint("TOP", endEncounterButton, "BOTTOM", 0, -20)
-    targetScrollFrame:SetSize(420, 300)
-
-    local targetContainer = CreateFrame("Frame", nil, targetScrollFrame)
-    targetContainer:SetSize(420, 300)
-    targetScrollFrame:SetScrollChild(targetContainer)
-
-    DMPanelHandler.targetFrames = {}
-
-    -- Create a button to add a new target
-    local addTargetButton = CreateFrame("Button", nil, encounterFrame, "GameMenuButtonTemplate")
-    addTargetButton:SetSize(120, 40)
-    addTargetButton:SetText("Add Target")
-    addTargetButton:SetPoint("TOP", targetScrollFrame, "BOTTOM", 0, -10)
-    addTargetButton:SetScript("OnClick", function()
-        local targetName = "Target " .. (#DMPanelHandler.targetFrames + 1)  -- Example target name, replace with user input
-        local targetHP = 100  -- Example HP, replace with user input
-        DMPanelHandler:AddTarget(targetName, targetHP)
-    end)
-
-    -- Create a button to remove the last target
-    local removeTargetButton = CreateFrame("Button", nil, encounterFrame, "GameMenuButtonTemplate")
-    removeTargetButton:SetSize(120, 40)
-    removeTargetButton:SetText("Remove Target")
-    removeTargetButton:SetPoint("LEFT", addTargetButton, "RIGHT", 10, 0)
-    removeTargetButton:SetScript("OnClick", function()
-        DMPanelHandler:RemoveLastTarget()
-    end)
-
-    -- Create buttons in Event Tab
-    local eventLogScrollFrame = CreateFrame("ScrollFrame", nil, eventFrame, "UIPanelScrollFrameTemplate")
-    eventLogScrollFrame:SetPoint("TOP", eventFrame, "TOP", 0, -20)
-    eventLogScrollFrame:SetSize(420, 400)
-
-    local eventLogFrame = CreateFrame("Frame", nil, eventLogScrollFrame)
-    eventLogFrame:SetSize(420, 400)
-    eventLogScrollFrame:SetScrollChild(eventLogFrame)
-
-    eventFrame.eventLog = eventLogFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    eventFrame.eventLog:SetPoint("TOPLEFT", eventLogFrame, "TOPLEFT", 0, 0)
-    eventFrame.eventLog:SetText("Event Logs:")
-
-    DMPanelHandler.frame = frame
-    DMPanelHandler.encounterFrame = encounterFrame
-    DMPanelHandler.eventFrame = eventFrame
-end
-
-    -- Create a separate UI for threat selection
-    local threatFrame = CreateFrame("Frame", "DMThreatFrame", UIParent, "BasicFrameTemplateWithInset")
-    threatFrame:SetSize(300, 400)
-    threatFrame:SetPoint("RIGHT", frame, "LEFT", -10, 0)
-    threatFrame.title = threatFrame:CreateFontString(nil, "OVERLAY")
-    threatFrame.title:SetFontObject("GameFontHighlight")
-    threatFrame.title:SetPoint("LEFT", threatFrame.TitleBg, "LEFT", 5, 0)
-    threatFrame.title:SetText("Threat Selection")
-
-    -- Create a button to assign threat to a target
-    local assignThreatButton = CreateFrame("Button", nil, threatFrame, "GameMenuButtonTemplate")
-    assignThreatButton:SetSize(120, 40)
-    assignThreatButton:SetText("Assign Threat")
-    assignThreatButton:SetPoint("TOP", threatFrame, "TOP", 0, -40)
-    assignThreatButton:SetScript("OnClick", function()
-        local targetName = "TargetName"  -- Replace with user input mechanism
-        DMPanelHandler:AssignThreat(targetName)
-    end)
-
-    DMPanelHandler.threatFrame = threatFrame
-end
-end
-
--- Function to start an encounter
-function DMPanelHandler:StartEncounter()
-    -- Logic to start an encounter
-    SendAddonMessage("DMAddon", "ENCOUNTER_STARTED", "RAID")
-    -- Notify non-threatened players to make a bonus attack roll
-    DMPanelHandler:NotifyNonThreatenedPlayers()
-endAddonMessage("DMAddon", "ENCOUNTER_STARTED", "RAID")
-end
-
--- Function to end an encounter
-function DMPanelHandler:EndEncounter()
-    -- Logic to end an encounter
-    SendAddonMessage("DMAddon", "ENCOUNTER_ENDED", "RAID")
-end
-
--- Function to grant experience points to players
-function DMPanelHandler:GrantExperience(xpAmount)
-    SendAddonMessage("DMAddon", "GRANT_XP: " .. xpAmount, "RAID")
-    print("Granted " .. xpAmount .. " XP to all players.")
-end
-
--- Function to handle incoming addon messages
-function DMPanelHandler:OnAddonMessage(prefix, message, channel, sender)
-    if prefix == "DMAddon" then
-        if message == "TARGET_SELECTED" then
-            DMPanelHandler:LogEvent(sender .. " selected a target.")
-        elseif message == "TARGET_CLEARED" then
-            DMPanelHandler:LogEvent(sender .. " cleared their target.")
-        elseif message:find("GRANT_XP") then
-            DMPanelHandler:LogEvent(sender .. " granted XP: " .. message:match("GRANT_XP: (%d+)"))
-        elseif message == "ENCOUNTER_STARTED" then
-            DMPanelHandler:LogEvent("Encounter started by " .. sender)
-        elseif message == "ENCOUNTER_ENDED" then
-            DMPanelHandler:LogEvent("Encounter ended by " .. sender)
-        elseif message:find("TARGET_HP") then
-            local targetName, targetHP = message:match("TARGET_HP: ([^:]+):(%d+)")
-            DMPanelHandler:LogEvent("Target " .. targetName .. " set with HP: " .. targetHP)
-            DMPanelHandler.targets = DMPanelHandler.targets or {}
-            DMPanelHandler.targets[targetName] = tonumber(targetHP)
-        elseif message:find("TARGET_DAMAGE") then
-            local targetName, damage = message:match("TARGET_DAMAGE: ([^:]+):(%d+)")
-            DMPanelHandler:LogEvent("Target " .. targetName .. " took " .. damage .. " damage")
-            DMPanelHandler:UpdateTargetHP(targetName, tonumber(damage))
-        elseif message:find("THREAT_ASSIGNED") then
-            local targetName = message:match("THREAT_ASSIGNED: (.+)")
-            DMPanelHandler.threatenedPlayers = DMPanelHandler.threatenedPlayers or {}
-            DMPanelHandler.threatenedPlayers[targetName] = true
-            DMPanelHandler:LogEvent("Threat assigned to " .. targetName .. ". Player must make a defense roll.")
-        end
-    end
-ender .. " selected a target.")
-        elseif message == "TARGET_CLEARED" then
-            DMPanelHandler:LogEvent(sender .. " cleared their target.")
-        elseif message:find("GRANT_XP") then
-            DMPanelHandler:LogEvent(sender .. " granted XP: " .. message:match("GRANT_XP: (%d+)"))
-        elseif message == "ENCOUNTER_STARTED" then
-            DMPanelHandler:LogEvent("Encounter started by " .. sender)
-        elseif message == "ENCOUNTER_ENDED" then
-            DMPanelHandler:LogEvent("Encounter ended by " .. sender)
-        elseif message:find("TARGET_HP") then
-            local targetName, targetHP = message:match("TARGET_HP: ([^:]+):(%d+)")
-            DMPanelHandler:LogEvent("Target " .. targetName .. " set with HP: " .. targetHP)
-            DMPanelHandler.targets = DMPanelHandler.targets or {}
-            DMPanelHandler.targets[targetName] = tonumber(targetHP)
-        elseif message:find("TARGET_DAMAGE") then
-            local targetName, damage = message:match("TARGET_DAMAGE: ([^:]+):(%d+)")
-            DMPanelHandler:LogEvent("Target " .. targetName .. " took " .. damage .. " damage")
-            DMPanelHandler:UpdateTargetHP(targetName, tonumber(damage))
-        end
-    end
-ender .. " selected a target.")
-        elseif message == "TARGET_CLEARED" then
-            DMPanelHandler:LogEvent(sender .. " cleared their target.")
-        elseif message:find("GRANT_XP") then
-            DMPanelHandler:LogEvent(sender .. " granted XP: " .. message:match("GRANT_XP: (%d+)"))
-        elseif message == "ENCOUNTER_STARTED" then
-            DMPanelHandler:LogEvent("Encounter started by " .. sender)
-        elseif message == "ENCOUNTER_ENDED" then
-            DMPanelHandler:LogEvent("Encounter ended by " .. sender)
-        elseif message:find("TARGET_HP") then
-            local targetName, targetHP = message:match("TARGET_HP: ([^:]+):(%d+)")
-            DMPanelHandler:LogEvent("Target " .. targetName .. " set with HP: " .. targetHP)
-            DMPanelHandler.targets = DMPanelHandler.targets or {}
-            DMPanelHandler.targets[targetName] = tonumber(targetHP)
-        end
-    end
-ender .. " selected a target.")
-        elseif message == "TARGET_CLEARED" then
-            DMPanelHandler:LogEvent(sender .. " cleared their target.")
-        elseif message:find("GRANT_XP") then
-            DMPanelHandler:LogEvent(sender .. " granted XP: " .. message:match("GRANT_XP: (%d+)"))
-        elseif message == "ENCOUNTER_STARTED" then
-            DMPanelHandler:LogEvent("Encounter started by " .. sender)
-        elseif message == "ENCOUNTER_ENDED" then
-            DMPanelHandler:LogEvent("Encounter ended by " .. sender)
-        elseif message:find("TARGET_HP") then
-            local targetName, targetHP = message:match("TARGET_HP: ([^:]+):(%d+)")
-            DMPanelHandler:LogEvent("Target " .. targetName .. " set with HP: " .. targetHP)
-        end
-    end
-ender .. " selected a target.")
-        elseif message == "TARGET_CLEARED" then
-            DMPanelHandler:LogEvent(sender .. " cleared their target.")
-        elseif message:find("GRANT_XP") then
-            DMPanelHandler:LogEvent(sender .. " granted XP: " .. message:match("GRANT_XP: (%d+)"))
-        elseif message == "ENCOUNTER_STARTED" then
-            DMPanelHandler:LogEvent("Encounter started by " .. sender)
-        elseif message == "ENCOUNTER_ENDED" then
-            DMPanelHandler:LogEvent("Encounter ended by " .. sender)
-        end
-    end
-end
-
--- Function to log events in the DM panel
-function DMPanelHandler:LogEvent(eventText)
-    if DMPanelHandler.frame then
-        local timestamp = date("%H:%M:%S")
-        local logText = "[" .. timestamp .. "] " .. eventText
-        DMPanelHandler.encounterFrame.eventLog:SetText(DMPanelHandler.encounterFrame.eventLog:GetText() .. "
-" .. logText)
-        DMPanelHandler.eventFrame.eventLog:SetText(DMPanelHandler.eventFrame.eventLog:GetText() .. "
-" .. logText)
-    end
-end
-end
-
--- Register for addon messages
-local eventFrame = CreateFrame("Frame")
-eventFrame:RegisterEvent("CHAT_MSG_ADDON")
-eventFrame:SetScript("OnEvent", function(self, event, ...)
-    if event == "CHAT_MSG_ADDON" then
-        DMPanelHandler:OnAddonMessage(...)
-    end
-end)
-
--- Function to set active targets with HP
-function DMPanelHandler:SetActiveTarget(targetName, targetHP)
-    SendAddonMessage("DMAddon", "TARGET_HP: " .. targetName .. ":" .. targetHP, "RAID")
-    print("Set target: " .. targetName .. " with HP: " .. targetHP)
-
-    -- Store target information for tracking HP updates
-    DMPanelHandler.targets = DMPanelHandler.targets or {}
-    DMPanelHandler.targets[targetName] = tonumber(targetHP)
-end
-end
-
--- Function to update target HP and notify players if needed
-function DMPanelHandler:UpdateTargetHP(targetName, damage)
-    if DMPanelHandler.targets and DMPanelHandler.targets[targetName] then
-        local currentHP = DMPanelHandler.targets[targetName]
-        local newHP = currentHP - damage
-        DMPanelHandler.targets[targetName] = newHP
-
-        if newHP <= (currentHP / 2) and newHP > (currentHP / 4) then
-            SendAddonMessage("DMAddon", "TARGET_UPDATE: " .. targetName .. " is starting to look damaged at 50% HP", "RAID")
-        elseif newHP <= (currentHP / 4) then
-            SendAddonMessage("DMAddon", "TARGET_UPDATE: " .. targetName .. " is severely damaged at 25% HP", "RAID")
-        end
-
-        -- If target HP drops to 0 or below, log target defeated
-        if newHP <= 0 then
-            DMPanelHandler:LogEvent("Target " .. targetName .. " has been defeated.")
-        end
-    end
-end
-
--- Function to roll damage for a target
-function DMPanelHandler:RollTargetDamage(targetName, damage)
-    if DMPanelHandler.targets and DMPanelHandler.targets[targetName] then
-        SendAddonMessage("DMAddon", "TARGET_DAMAGE: " .. targetName .. ":" .. damage, "RAID")
-        print("Target " .. targetName .. " took " .. damage .. " damage")
-        DMPanelHandler:UpdateTargetHP(targetName, damage)
     else
-        print("Target not found: " .. targetName)
+        print("Invalid target marker selected.")
+    end
+end
+end
+local CombatHandler = {}
+
+-- Function to perform a melee attack roll
+function CombatHandler:PerformMeleeAttack(characterSheet)
+    local target = characterSheet.selectedTarget or "Unknown Target"
+    local roll = math.random(1, 100) + characterSheet.offensiveAbilities.meleeCombat
+    local weaponDamage = 0
+
+    -- Determine weapon damage and bonuses based on selected weapon type
+    if characterSheet.weaponType == "Unarmed" then
+        weaponDamage = 6  -- D6 for unarmed
+    elseif characterSheet.weaponType == "Single One-Handed" then
+        weaponDamage = 8  -- D8 for single one-handed
+        roll = roll + 5  -- +5 to hit bonus
+    elseif characterSheet.weaponType == "Double One-Handed" then
+        weaponDamage = 8  -- D8 for double one-handed
+        weaponDamage = weaponDamage + 2  -- +2 damage bonus
+    elseif characterSheet.weaponType == "Single One-Handed + Shield" then
+        weaponDamage = 8  -- D8 for single one-handed with shield
+    elseif characterSheet.weaponType == "Two-Handed" then
+        weaponDamage = 10  -- D10 for two-handed
+        weaponDamage = weaponDamage + 2  -- +2 damage bonus for double-handed
+    end
+
+    local totalDamage = math.random(1, weaponDamage) + characterSheet.offensiveAbilities.meleeCombat
+    local isCritical = roll >= 95
+    if isCritical then
+        print("Melee Attack Roll on " .. target .. ": " .. roll .. " (CRITICAL HIT!)")
+        totalDamage = totalDamage + weaponDamage  -- Add full dice roll for critical hit
+        print("Critical Damage: " .. totalDamage)
+    else
+        print("Melee Attack Roll on " .. target .. ": " .. roll .. " (Damage: " .. totalDamage .. ")")
+    end
+    return roll, totalDamage
+end
+
+    local totalDamage = math.random(1, weaponDamage) + characterSheet.offensiveAbilities.meleeCombat
+    local isCritical = roll >= 95
+    if isCritical then
+        print("Melee Attack Roll: " .. roll .. " (CRITICAL HIT!)")
+        totalDamage = totalDamage + weaponDamage  -- Add full dice roll for critical hit
+        print("Critical Damage: " .. totalDamage)
+    else
+        print("Melee Attack Roll: " .. roll .. " (Damage: " .. totalDamage .. ")")
+    end
+    return roll, totalDamage
+end
+
+    local totalDamage = math.random(1, weaponDamage) + characterSheet.offensiveAbilities.meleeCombat
+    local isCritical = roll >= 95
+    if isCritical then
+        print("Melee Attack Roll: " .. roll .. " (CRITICAL HIT!)")
+        totalDamage = totalDamage + weaponDamage  -- Add full dice roll for critical hit
+        print("Critical Damage: " .. totalDamage)
+    else
+        print("Melee Attack Roll: " .. roll .. " (Damage: " .. totalDamage .. ")")
+    end
+    return roll, totalDamage
+end
+
+-- Function to perform a magic attack roll
+function CombatHandler:PerformMagicAttack(characterSheet)
+    local target = characterSheet.selectedTarget or "Unknown Target"
+    local roll = math.random(1, 100) + characterSheet.offensiveAbilities.battleMagic
+    local spellTurn = characterSheet.activeSpells.turn or 1
+    local weaponDamage = 0
+
+    -- Determine damage and effects based on the number of turns the spell has been active
+    if spellTurn == 1 then
+        weaponDamage = math.random(1, 10)  -- D10 damage
+    elseif spellTurn == 2 then
+        weaponDamage = math.random(1, 12)  -- D12 damage, guaranteed hit
+        roll = 100  -- Guaranteed hit
+    elseif spellTurn == 3 then
+        weaponDamage = math.random(1, 12) + 5  -- D12 + 5 damage
+    elseif spellTurn == 4 then
+        weaponDamage = math.random(1, 20) + 5  -- D20 + 5 damage, target is stunned
+        print("Target is stunned!")
+    elseif spellTurn == 5 then
+        weaponDamage = math.random(1, 30) + 5  -- D30 + 5 damage
+    elseif spellTurn == 6 then
+        weaponDamage = math.random(1, 30) + 10  -- D30 + 10 damage, hits nearby targets
+        print("Hits nearby targets!")
+    elseif spellTurn == 7 then
+        weaponDamage = math.random(1, 30) + 20  -- D30 + 20 damage
+    elseif spellTurn == 8 then
+        weaponDamage = 60  -- Maximum damage
+    elseif spellTurn == 9 then
+        weaponDamage = 75  -- 75 damage
+    elseif spellTurn == 10 then
+        weaponDamage = 90  -- 90 damage, guaranteed critical hit
+        roll = 100  -- Guaranteed critical hit
+    end
+
+    local totalDamage = roll + weaponDamage + characterSheet.offensiveAbilities.battleMagic
+    local isCritical = roll >= 95 or spellTurn == 10
+    if isCritical then
+        print("Magic Attack Roll on " .. target .. ": " .. roll .. " (CRITICAL HIT!)")
+        totalDamage = totalDamage + weaponDamage  -- Add full dice roll for critical hit
+        print("Critical Damage: " .. totalDamage)
+    else
+        print("Magic Attack Roll on " .. target .. ": " .. roll .. " (Damage: " .. totalDamage .. ")")
+    end
+
+    -- Increment the spell turn for the next attack
+    characterSheet.activeSpells.turn = spellTurn + 1
+    return roll, totalDamage
+end
+
+    local totalDamage = roll + weaponDamage + characterSheet.offensiveAbilities.battleMagic
+    local isCritical = roll >= 95 or spellTurn == 10
+    if isCritical then
+        print("Magic Attack Roll: " .. roll .. " (CRITICAL HIT!)")
+        totalDamage = totalDamage + weaponDamage  -- Add full dice roll for critical hit
+        print("Critical Damage: " .. totalDamage)
+    else
+        print("Magic Attack Roll: " .. roll .. " (Damage: " .. totalDamage .. ")")
+    end
+
+    -- Increment the spell turn for the next attack
+    characterSheet.activeSpells.turn = spellTurn + 1
+    return roll, totalDamage
+end
+
+    local totalDamage = roll + weaponDamage + characterSheet.offensiveAbilities.battleMagic
+    local isCritical = roll >= 95 or spellTurn == 10
+    if isCritical then
+        print("Magic Attack Roll: " .. roll .. " (CRITICAL HIT!)")
+        totalDamage = totalDamage + weaponDamage  -- Add full dice roll for critical hit
+        print("Critical Damage: " .. totalDamage)
+    else
+        print("Magic Attack Roll: " .. roll .. " (Damage: " .. totalDamage .. ")")
+    end
+
+    -- Increment the spell turn for the next attack
+    characterSheet.activeSpells.turn = spellTurn + 1
+    return roll, totalDamage
+end
+    return roll, totalDamage
+end
+
+-- Function to perform a ranged attack roll
+function CombatHandler:PerformRangedAttack(characterSheet)
+    local target = characterSheet.selectedTarget or "Unknown Target"
+    local roll = math.random(1, 100) + characterSheet.offensiveAbilities.rangedCombat
+    local weaponDamage = 0
+
+    -- Determine weapon damage based on selected ranged weapon type
+    if characterSheet.rangedWeaponType == "CrossBow" then
+        weaponDamage = math.random(1, 8)  -- D8 for CrossBow
+    elseif characterSheet.rangedWeaponType == "Rifle" then
+        weaponDamage = math.random(1, 10)  -- D10 for Rifle
+    end
+
+    -- Sniper rules: apply bonuses if turns are spent preparing the shot
+    local sniperTurn = characterSheet.sniperTurnCounter or 0
+    if sniperTurn == 2 then
+        weaponDamage = math.random(1, 10)  -- D10 damage, guaranteed hit
+        roll = 100  -- Guaranteed hit
+    elseif sniperTurn == 3 then
+        weaponDamage = math.random(1, 12)  -- D12 damage, target is stunned
+        print("Target is stunned!")
+    elseif sniperTurn == 4 then
+        weaponDamage = 12  -- Maximum damage
+    elseif sniperTurn == 5 then
+        weaponDamage = 16  -- Guaranteed critical hit
+        roll = 100  -- Guaranteed critical hit
+    end
+
+    local totalDamage = roll + weaponDamage + characterSheet.offensiveAbilities.rangedCombat
+    local isCritical = roll >= 95 or sniperTurn == 5
+    if isCritical then
+        print("Ranged Attack Roll on " .. target .. ": " .. roll .. " (CRITICAL HIT!)")
+        totalDamage = totalDamage + weaponDamage  -- Add full dice roll for critical hit
+        print("Critical Damage: " .. totalDamage)
+    else
+        print("Ranged Attack Roll on " .. target .. ": " .. roll .. " (Damage: " .. totalDamage .. ")")
+    end
+
+    -- Increment sniper turn counter
+    characterSheet.sniperTurnCounter = sniperTurn + 1
+    return roll, totalDamage
+end
+
+    -- Sniper rules: apply bonuses if turns are spent preparing the shot
+    local sniperTurn = characterSheet.sniperTurnCounter or 0
+    if sniperTurn == 2 then
+        weaponDamage = math.random(1, 10)  -- D10 damage, guaranteed hit
+        roll = 100  -- Guaranteed hit
+    elseif sniperTurn == 3 then
+        weaponDamage = math.random(1, 12)  -- D12 damage, target is stunned
+        print("Target is stunned!")
+    elseif sniperTurn == 4 then
+        weaponDamage = 12  -- Maximum damage
+    elseif sniperTurn == 5 then
+        weaponDamage = 16  -- Guaranteed critical hit
+        roll = 100  -- Guaranteed critical hit
+    end
+
+    local totalDamage = roll + weaponDamage + characterSheet.offensiveAbilities.rangedCombat
+    local isCritical = roll >= 95 or sniperTurn == 5
+    if isCritical then
+        print("Ranged Attack Roll: " .. roll .. " (CRITICAL HIT!)")
+        totalDamage = totalDamage + weaponDamage  -- Add full dice roll for critical hit
+        print("Critical Damage: " .. totalDamage)
+    else
+        print("Ranged Attack Roll: " .. roll .. " (Damage: " .. totalDamage .. ")")
+    end
+
+    -- Increment sniper turn counter
+    characterSheet.sniperTurnCounter = sniperTurn + 1
+    return roll, totalDamage
+end
+
+    -- Sniper rules: apply bonuses if turns are spent preparing the shot
+    local sniperTurn = characterSheet.sniperTurnCounter or 0
+    if sniperTurn == 2 then
+        weaponDamage = weaponDamage + 10  -- Guaranteed hit
+        roll = 100
+    elseif sniperTurn == 3 then
+        weaponDamage = 12  -- D12 damage, target is stunned
+        print("Target is stunned!")
+    elseif sniperTurn == 4 then
+        weaponDamage = 12  -- Maximum damage
+    elseif sniperTurn == 5 then
+        weaponDamage = 16  -- Guaranteed critical hit
+        roll = 100
+    end
+
+    local totalDamage = math.random(1, weaponDamage) + characterSheet.offensiveAbilities.rangedCombat
+    local isCritical = roll >= 95 or sniperTurn == 5
+    if isCritical then
+        print("Ranged Attack Roll: " .. roll .. " (CRITICAL HIT!)")
+        totalDamage = totalDamage + weaponDamage  -- Add full dice roll for critical hit
+        print("Critical Damage: " .. totalDamage)
+    else
+        print("Ranged Attack Roll: " .. roll .. " (Damage: " .. totalDamage .. ")")
+    end
+
+    -- Increment sniper turn counter
+    characterSheet.sniperTurnCounter = sniperTurn + 1
+    return roll, totalDamage
+end
+
+    local totalDamage = math.random(1, weaponDamage) + characterSheet.offensiveAbilities.rangedCombat
+    local isCritical = roll >= 95
+    if isCritical then
+        print("Ranged Attack Roll: " .. roll .. " (CRITICAL HIT!)")
+        totalDamage = totalDamage + weaponDamage  -- Add full dice roll for critical hit
+        print("Critical Damage: " .. totalDamage)
+    else
+        print("Ranged Attack Roll: " .. roll .. " (Damage: " .. totalDamage .. ")")
+    end
+    return roll, totalDamage
+end
+
+-- Function to perform a defense roll
+function CombatHandler:PerformDefenseRoll(characterSheet, rawDamage)
+    local roll = math.random(1, 100) + characterSheet.defensiveAbilities.battlefieldDefense
+    local damageReduction = 0
+
+    -- Determine damage reduction based on armor type
+    if characterSheet.armorType == "Light" then
+        damageReduction = 1
+    elseif characterSheet.armorType == "Medium" then
+        damageReduction = 2
+    elseif characterSheet.armorType == "Heavy" then
+        damageReduction = 3
+    end
+
+    -- If successful defense, block all damage
+    if roll >= 100 then
+        print("Defense Roll: " .. roll .. " (SUCCESS! All damage blocked)")
+        return roll, 0  -- No damage taken
+    else
+        -- Reduce raw damage dealt by DM
+        local mitigatedDamage = math.max(0, rawDamage - damageReduction)
+        print("Defense Roll: " .. roll .. " (Mitigated Damage: " .. mitigatedDamage .. ")")
+        return roll, mitigatedDamage
     end
 end
 
--- Function to assign threat to a target
-function DMPanelHandler:AssignThreat(targetName)
-    if DMPanelHandler.targets and DMPanelHandler.targets[targetName] then
-        SendAddonMessage("DMAddon", "THREAT_ASSIGNED: " .. targetName, "RAID")
-        DMPanelHandler:LogEvent("Threat assigned to " .. targetName)
-        -- Notify the player to make a defense roll
-        SendAddonMessage("DMAddon", "DEFENSE_ROLL: " .. targetName, "WHISPER", targetName)
-    else
-        print("Target not found: " .. targetName)
+-- Function to calculate proficiency based on level
+function CombatHandler:CalculateProficiency(level)
+    local proficiency = 1
+    if level < 2 then
+        proficiency = 1
+    elseif level < 5 then
+        proficiency = 2
+    elseif level < 8 then
+        proficiency = 3
+    elseif level < 12 then
+        proficiency = 4
+    elseif level < 16 then
+        proficiency = 5
+    elseif level < 20 then
+        proficiency = 6
+    elseif level == 20 then
+        proficiency = 6
     end
-endAddonMessage("DMAddon", "THREAT_ASSIGNED: " .. targetName, "RAID")
-        DMPanelHandler:LogEvent("Threat assigned to " .. targetName)
-    else
-        print("Target not found: " .. targetName)
-    end
+    return proficiency
 end
 
--- Function to notify non-threatened players to make a bonus attack roll
-function DMPanelHandler:NotifyNonThreatenedPlayers()
-    for playerName, _ in pairs(DMPanelHandler.targets) do
-        if not DMPanelHandler.threatenedPlayers or not DMPanelHandler.threatenedPlayers[playerName] then
-            SendAddonMessage("DMAddon", "BONUS_ATTACK_ROLL: " .. playerName, "WHISPER", playerName)
-            DMPanelHandler:LogEvent(playerName .. " can make a bonus attack roll.")
-        end
-    end
+-- Function to clear the selected target
+function CombatHandler:ClearTarget()
+    characterSheet.selectedTarget = nil
+    print("Target selection cleared.")
 end
 
--- Function to add a new target to the encounter
-function DMPanelHandler:AddTarget(targetName, targetHP)
-    -- Create a frame for the new target
-    local targetFrame = CreateFrame("Frame", nil, DMPanelHandler.encounterFrame, "BackdropTemplate")
-    targetFrame:SetSize(420, 40)
-    targetFrame:SetBackdrop({
-        bgFile = "Interface\DialogFrame\UI-DialogBox-Background",
-        edgeFile = "Interface\DialogFrame\UI-DialogBox-Border",
-        tile = true,
-        tileSize = 16,
-        edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 }
-    })
-
-    -- Position targetFrame below the existing target frames
-    if #DMPanelHandler.targetFrames == 0 then
-        targetFrame:SetPoint("TOP", DMPanelHandler.targetContainer, "TOP", 0, -10)
-    else
-        targetFrame:SetPoint("TOP", DMPanelHandler.targetFrames[#DMPanelHandler.targetFrames], "BOTTOM", 0, -10)
-    end
-
-    -- Target Name
-    local targetNameText = targetFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    targetNameText:SetPoint("LEFT", targetFrame, "LEFT", 10, 0)
-    targetNameText:SetText(targetName)
-
-    -- HP Status Bar
-    local hpBar = CreateFrame("StatusBar", nil, targetFrame, "TextStatusBar")
-    hpBar:SetSize(200, 20)
-    hpBar:SetPoint("LEFT", targetNameText, "RIGHT", 10, 0)
-    hpBar:SetStatusBarTexture("Interface\TARGETINGFRAME\UI-StatusBar")
-    hpBar:SetMinMaxValues(0, targetHP)
-    hpBar:SetValue(targetHP)
-    hpBar.text = hpBar:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    hpBar.text:SetPoint("CENTER", hpBar)
-    hpBar.text:SetText(targetHP)
-
-    -- Assign Threat Button
-    local assignThreatButton = CreateFrame("Button", nil, targetFrame, "GameMenuButtonTemplate")
-    assignThreatButton:SetSize(100, 20)
-    assignThreatButton:SetText("Assign Threat")
-    assignThreatButton:SetPoint("LEFT", hpBar, "RIGHT", 10, 0)
-    assignThreatButton:SetScript("OnClick", function()
-        DMPanelHandler:AssignThreat(targetName)
+-- Function to create a button for selecting raid targets
+function CombatHandler:CreateRaidTargetButton(parentFrame)
+    local button = CreateFrame("Button", nil, parentFrame, "GameMenuButtonTemplate")
+    button:SetSize(120, 40)
+    button:SetText("Select Target")
+    button:SetPoint("CENTER", parentFrame, "CENTER", 0, -100)
+    button:SetScript("OnClick", function()
+        -- Example: prompt the player to select a target marker
+        local targetMarker = "Skull"  -- Replace with user input or selection mechanism
+        CombatHandler:SelectTarget(targetMarker)
     end)
-
-    -- Add to target frames list for future management
-    table.insert(DMPanelHandler.targetFrames, targetFrame)
-
-    -- Store the target data
-    DMPanelHandler.targets = DMPanelHandler.targets or {}
-    DMPanelHandler.targets[targetName] = targetHP
+    return button
 end
 
--- Function to remove the last target from the encounter
-function DMPanelHandler:RemoveLastTarget()
-    if #DMPanelHandler.targetFrames > 0 then
-        local targetFrame = table.remove(DMPanelHandler.targetFrames)
-        targetFrame:Hide()
-        targetFrame:SetParent(nil)
-    end
+-- Function to create a button for selecting raid targets
+function CombatHandler:CreateRaidTargetButton(parentFrame)
+    local button = CreateFrame("Button", nil, parentFrame, "GameMenuButtonTemplate")
+    button:SetSize(120, 40)
+    button:SetText("Select Target")
+    button:SetPoint("CENTER", parentFrame, "CENTER", 0, -100)
+    button:SetScript("OnClick", function()
+        -- Example: prompt the player to select a target marker
+        local targetMarker = "Skull"  -- Replace with user input or selection mechanism
+        CombatHandler:SelectTarget(targetMarker)
+    end)
+    return button
 end
 
--- Export DMPanelHandler table
-return DMPanelHandler
+-- Function to create a button for clearing the selected target
+function CombatHandler:CreateClearTargetButton(parentFrame)
+    local button = CreateFrame("Button", nil, parentFrame, "GameMenuButtonTemplate")
+    button:SetSize(120, 40)
+    button:SetText("Clear Target")
+    button:SetPoint("CENTER", parentFrame, "CENTER", 0, -150)
+    button:SetScript("OnClick", function()
+        CombatHandler:ClearTarget()
+    end)
+    return button
+end
+
+-- Export CombatHandler table
+return CombatHandler
